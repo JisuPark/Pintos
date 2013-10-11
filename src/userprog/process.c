@@ -195,6 +195,9 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
+/****Added function****/
+bool parse_filename(char** argv,int* argc,int* arg_tot_len,char* file_name);
+/*********************/
 static bool setup_stack (void **esp);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
@@ -214,19 +217,18 @@ load (const char *file_name, void (**eip) (void), void **esp)
   off_t file_ofset;
   bool success = false;
   int i;
+ 
+  /****Added variable****/
+  int arg_tot_len=0;
+  int argc=0;
+  char** argv = NULL;
+  /*********************/
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
-
-  /*
-     parse_filename()
-     
-   AAAAAAAAAAADDDDDDDDDDD
-   */
-
 
   /* Open executable file. */
   file = filesys_open (file_name);
@@ -235,6 +237,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
+
+  /* Parsing arguments */
+  if( parse_filename(argv,&argc,&arg_tot_len,(char*)file_name) == false )	
+    return success;
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -474,4 +480,38 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (th->pagedir, upage) == NULL
           && pagedir_set_page (th->pagedir, upage, kpage, writable));
+}
+bool parse_filename(char** argv,int* argc,int* arg_tot_len,char* file_name){
+
+  int len;
+  char *token, *save_ptr;
+  argv = (char**)malloc(sizeof(char*)*1);
+
+  token = strtok_r (file_name, " \n\t", &save_ptr);
+
+  //No argument error
+  if(token == NULL)
+  {
+    free(argv);
+    return false;
+  }
+ 
+  do
+  {
+    argv = (char**)realloc(argv,(*argc+1)*sizeof(char*));
+    
+    //Too much arguments error
+    if(argv == NULL)return false;
+    
+    len = strlen(token) + 1;
+    //Save total argument length for word allignment
+    *arg_tot_len += len;
+
+    //for NULL character
+    argv[*argc]=(char*)malloc(sizeof(char)*len);
+    strlcpy(argv[*argc++],token,len);
+
+  }while(token = strtok_r(NULL," \n\t", &save_ptr));
+
+  return true;
 }
