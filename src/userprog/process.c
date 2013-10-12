@@ -215,19 +215,17 @@ load (const char *file_name, void (**eip) (void), void **esp)
   bool success = false;
   int i;
 
+  /****Added variable****/
+  int arg_tot_len = 0;
+  int argc = 0;
+  char argv[64][128];
+  /*********************/
+
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
-
-  /*
-     parse_filename()
-     
-   AAAAAAAAAAADDDDDDDDDDD
-   */
-
-
   /* Open executable file. */
   file = filesys_open (file_name);
   if (file == NULL) 
@@ -235,6 +233,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
+
+  parse_filename(argv,&argc,&arg_tot_len,(char*)file_name);
+
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -312,11 +313,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if (!setup_stack (esp))
     goto done;
 
-  /*
-     construct_ESP(esp)
-	AAAAAAAAAAAADDDDDDDDDDDDDDDDDDD
-     */
+  construct_ESP(esp,argv,argc,arg_tot_len);
 
+  hex_dump((int)*esp,*esp,128,true);
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
@@ -474,4 +473,51 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (th->pagedir, upage) == NULL
           && pagedir_set_page (th->pagedir, upage, kpage, writable));
+}
+
+/* Too many arguments for parsing(>128) then return false */
+bool
+parse_filename(char argv[][128],int* argc,int* arg_tot_len, char* file_name)
+{
+  int len=0;
+  char *token, *save_ptr;
+
+  for ( token = strtok_r (file_name, " \n\t", &save_ptr); token != NULL;
+        token = strtok_r (NULL, " \n\t", &save_ptr))
+  {
+    len = strlen(token) + 1;
+    //Save total argument length for allignment
+    *arg_tot_len += len;
+
+    strlcpy(argv[*argc++],token,len);
+  }
+  if(len>128) return false;
+
+  return true;
+}
+
+void 
+construct_ESP(void** esp,char argv[64][128],int argc,int arg_tot_len){
+
+  int cnt = argc;
+  void** tmp;
+  while(cnt--)
+  {
+    memcpy(*esp,(const void*)argv[cnt],strlen(argv[cnt])+1);
+    esp--;
+  }
+
+  if(arg_tot_len%4 != 0)
+    memcpy(*esp,(const void*)'0',4-arg_tot_len%4);
+
+  cnt = argc;
+  while(cnt--)
+  {
+    *--esp = argv[cnt];
+  }
+
+  tmp = esp;
+  *--esp = tmp;
+  memset(*--esp,argc,1);
+  *--esp = (void*)NULL;
 }
