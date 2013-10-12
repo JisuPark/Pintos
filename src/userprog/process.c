@@ -220,7 +220,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /****Added variable****/
   int argc = 0;
   int arg_tot_len = 0;
-  char* argv[128];
+  char argv[64][128];
   /*********************/
 
   /* Allocate and activate page directory. */
@@ -478,7 +478,7 @@ install_page (void *upage, void *kpage, bool writable)
 }
 
 void
-parse_filename(char* argv[128],int* argc, char* file_name)
+parse_filename(char argv[][128],int* argc, char* file_name)
 {
   int len=0;
   char *token, *save_ptr;
@@ -493,7 +493,7 @@ parse_filename(char* argv[128],int* argc, char* file_name)
 }
 
 void
-construct_ESP(void** esp,char* argv[128],int arg_tot_len,int argc)
+construct_ESP(void** esp,char argv[][128],int arg_tot_len,int argc)
 {
   int align = 0;
   int cnt = argc;
