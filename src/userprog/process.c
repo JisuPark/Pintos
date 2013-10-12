@@ -218,7 +218,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /****Added variable****/
   int arg_tot_len=0;
   int argc=0;
-  char argv[64][128] = NULL;
+  char argv[64][128];
   /*********************/
 
   /* Allocate and activate page directory. */
