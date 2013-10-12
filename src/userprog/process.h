@@ -8,4 +8,8 @@ int process_wait (tid_t);
 void process_exit (void);
 void process_activate (void);
 
+/****Added function****/
+bool parse_filename(char** argv,int* argc,int* arg_tot_len,char* file_name);
+
+
 #endif /* userprog/process.h */

@@ -195,9 +195,6 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-/****Added function****/
-bool parse_filename(char** argv,int* argc,int* arg_tot_len,char* file_name);
-/*********************/
 static bool setup_stack (void **esp);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
@@ -221,7 +218,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /****Added variable****/
   int arg_tot_len=0;
   int argc=0;
-  char** argv = NULL;
+  char argv[64][128] = NULL;
   /*********************/
 
   /* Allocate and activate page directory. */
@@ -481,37 +478,24 @@ install_page (void *upage, void *kpage, bool writable)
   return (pagedir_get_page (th->pagedir, upage) == NULL
           && pagedir_set_page (th->pagedir, upage, kpage, writable));
 }
-bool parse_filename(char** argv,int* argc,int* arg_tot_len,char* file_name){
+bool parse_filename(char argv[64][128],int* argc,int* arg_tot_len,char* file_name){
 
   int len;
   char *token, *save_ptr;
-  argv = (char**)malloc(sizeof(char*)*1);
-
-  token = strtok_r (file_name, " \n\t", &save_ptr);
-
-  //No argument error
-  if(token == NULL)
+  
+  for (token = strtok_r (file_name, " \n\t", &save_ptr); token != NULL;
+       token = strtok_r (NULL, " \n\t", &save_ptr))
   {
-    free(argv);
-    return false;
-  }
- 
-  do
-  {
-    argv = (char**)realloc(argv,(*argc+1)*sizeof(char*));
-    
-    //Too much arguments error
-    if(argv == NULL)return false;
     
     len = strlen(token) + 1;
     //Save total argument length for word allignment
     *arg_tot_len += len;
 
-    //for NULL character
-    argv[*argc]=(char*)malloc(sizeof(char)*len);
     strlcpy(argv[*argc++],token,len);
 
-  }while(token = strtok_r(NULL," \n\t", &save_ptr));
+  }
+
+  if(len > 128) return false;
 
   return true;
 }
