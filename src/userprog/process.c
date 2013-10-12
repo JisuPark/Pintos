@@ -88,6 +88,8 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  while(1){
+  }
   return -1;
 }
 
@@ -216,9 +218,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
   int i;
 
   /****Added variable****/
-  int arg_tot_len = 0;
   int argc = 0;
-  char argv[64][128];
+  int arg_tot_len = 0;
+  char* argv[128];
   /*********************/
 
   /* Allocate and activate page directory. */
@@ -234,8 +236,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
       goto done; 
     }
 
-  parse_filename(argv,&argc,&arg_tot_len,(char*)file_name);
-
+  arg_tot_len = strlen(file_name) + 1;
+  parse_filename(argv,&argc,(char*)file_name);
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -304,24 +306,24 @@ load (const char *file_name, void (**eip) (void), void **esp)
                 goto done;
             }
           else
-            goto done;
-          break;
-        }
+	    goto done;
+	  break;
+	}
     }
 
   /* Set up stack. */
   if (!setup_stack (esp))
     goto done;
 
-  construct_ESP(esp,argv,argc,arg_tot_len);
-
-  hex_dump((int)*esp,*esp,128,true);
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
+  construct_ESP(esp,argv,arg_tot_len,argc);
+  hex_dump(*(unsigned int*)esp,*esp,PHYS_BASE-(*esp),true);
+
   success = true;
 
- done:
+done:
   /* We arrive here whether the load is successful or not. */
   file_close (file);
   return success;
@@ -475,9 +477,8 @@ install_page (void *upage, void *kpage, bool writable)
           && pagedir_set_page (th->pagedir, upage, kpage, writable));
 }
 
-/* Too many arguments for parsing(>128) then return false */
-bool
-parse_filename(char argv[][128],int* argc,int* arg_tot_len, char* file_name)
+void
+parse_filename(char* argv[128],int* argc, char* file_name)
 {
   int len=0;
   char *token, *save_ptr;
@@ -486,38 +487,45 @@ parse_filename(char argv[][128],int* argc,int* arg_tot_len, char* file_name)
         token = strtok_r (NULL, " \n\t", &save_ptr))
   {
     len = strlen(token) + 1;
-    //Save total argument length for allignment
-    *arg_tot_len += len;
 
-    strlcpy(argv[*argc++],token,len);
+    strlcpy(argv[(*argc)++],token,len);
   }
-  if(len>128) return false;
-
-  return true;
 }
 
-void 
-construct_ESP(void** esp,char argv[64][128],int argc,int arg_tot_len){
-
+void
+construct_ESP(void** esp,char* argv[128],int arg_tot_len,int argc)
+{
+  int align = 0;
   int cnt = argc;
-  void** tmp;
+  void* argv_addr[129];
+
+  *esp -= 4;
+  memcpy(*esp, &cnt,4);
+  
+  //Push argument
   while(cnt--)
   {
-    memcpy(*esp,(const void*)argv[cnt],strlen(argv[cnt])+1);
-    esp--;
+    *esp -= strlen(argv[cnt]) + 1;
+    memcpy(*esp, argv[cnt], strlen(argv[cnt]) + 1);
+    argv_addr[cnt+1] = *esp;
   }
 
-  if(arg_tot_len%4 != 0)
-    memcpy(*esp,(const void*)'0',4-arg_tot_len%4);
+  //Calculate alignment
+  if(arg_tot_len%4 != 0) align = 4 - arg_tot_len%4;
+  
+  argv_addr[0] = *esp - align - sizeof(char*)*(argc+1);
 
+  *esp -= align 			//Word alignemnt
+        + sizeof(char*)*(argc+1)	//Argument address
+	+ sizeof(char**)		//Head argument address
+	+ sizeof(int)			//Argc
+	+ sizeof(void*);		//Return address
+
+  //Push argument address
+  memcpy(*esp + 8, argv_addr, 4*(argc + 1));
+  
+  //Push argc
   cnt = argc;
-  while(cnt--)
-  {
-    *--esp = argv[cnt];
-  }
-
-  tmp = esp;
-  *--esp = tmp;
-  memset(*--esp,argc,1);
-  *--esp = (void*)NULL;
+  memcpy(*esp + 4, &cnt, 4);		
+  
 }
