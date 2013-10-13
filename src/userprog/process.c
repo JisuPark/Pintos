@@ -17,6 +17,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "lib/stdio.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -88,6 +89,8 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  while(1){
+  }
   return -1;
 }
 
@@ -216,9 +219,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
   int i;
  
   /****Added variable****/
-  int arg_tot_len=0;
-  int argc=0;
-  char argv[64][128];
+  int argc = 0;
+  int arg_tot_len = 0;
+  char* argv[64];
+  char file_tmp[129];
   /*********************/
 
   /* Allocate and activate page directory. */
@@ -226,7 +230,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
-
   /* Open executable file. */
   file = filesys_open (file_name);
   if (file == NULL) 
@@ -235,9 +238,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
       goto done; 
     }
 
-  /* Parsing arguments */
-  if( parse_filename(argv,&argc,&arg_tot_len,(char*)file_name) == false )	
-    return success;
+  arg_tot_len = strlen(file_name) + 1;
+  strlcpy(file_tmp,file_name,arg_tot_len);
+  parse_filename(argv,&argc,file_tmp);
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -306,26 +309,24 @@ load (const char *file_name, void (**eip) (void), void **esp)
                 goto done;
             }
           else
-            goto done;
-          break;
-        }
+	    goto done;
+	  break;
+	}
     }
 
   /* Set up stack. */
   if (!setup_stack (esp))
     goto done;
 
-  /*
-     construct_ESP(esp)
-	AAAAAAAAAAAADDDDDDDDDDDDDDDDDDD
-     */
-
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
+  construct_ESP(esp,argv,arg_tot_len,argc);
+  hex_dump(*(unsigned int*)esp,*esp,PHYS_BASE-(*esp),true);
+
   success = true;
 
- done:
+done:
   /* We arrive here whether the load is successful or not. */
   file_close (file);
   return success;
@@ -478,24 +479,53 @@ install_page (void *upage, void *kpage, bool writable)
   return (pagedir_get_page (th->pagedir, upage) == NULL
           && pagedir_set_page (th->pagedir, upage, kpage, writable));
 }
-bool parse_filename(char argv[64][128],int* argc,int* arg_tot_len,char* file_name){
 
-  int len;
-  char *token, *save_ptr;
-  
-  for (token = strtok_r (file_name, " \n\t", &save_ptr); token != NULL;
-       token = strtok_r (NULL, " \n\t", &save_ptr))
+void
+parse_filename(char* argv[128],int* argc, char* file_name)
+{
+  int len=0;
+  char *save_ptr;
+
+  for ( argv[*argc] = strtok_r (file_name, " \n\t", &save_ptr);
+        argv[*argc] != NULL;
+        argv[*argc] = strtok_r (NULL, " \n\t", &save_ptr))
   {
-    
-    len = strlen(token) + 1;
-    //Save total argument length for word allignment
-    *arg_tot_len += len;
+    len = strlen(argv[*argc]) + 1;
+    (*argc)++;
+  }
+}
 
-    strlcpy(argv[*argc++],token,len);
-
+void
+construct_ESP(void** esp,char* argv[128],int arg_tot_len,int argc)
+{
+  int align = 0;
+  int cnt = argc;
+  void* argv_addr[65];
+  
+  //Push argument
+  while(cnt--)
+  {
+    *esp -= strlen(argv[cnt]) + 1;
+    memcpy(*esp, argv[cnt], strlen(argv[cnt]) + 1);
+    argv_addr[cnt+1] = *esp;
   }
 
-  if(len > 128) return false;
+  //Calculate alignment
+  if(arg_tot_len%4 != 0) align = 4 - arg_tot_len%4;
+  
+  argv_addr[0] = *esp - align - sizeof(char*)*(argc+1);
 
-  return true;
+  *esp -= align 			//Word alignemnt
+        + sizeof(char*)*(argc+1)	//Argument address
+	+ sizeof(char**)		//Head argument address
+	+ sizeof(int)			//Argc
+	+ sizeof(void*);		//Return address
+
+  //Push argument address
+  memcpy(*esp + 8, argv_addr, 4*(argc + 1));
+  
+  //Push argc
+  cnt = argc;
+  memcpy(*esp + 4, &cnt, 4);		
+  
 }

@@ -9,7 +9,7 @@ void process_exit (void);
 void process_activate (void);
 
 /****Added function****/
-bool parse_filename(char argv[64][128],int* argc,int* arg_tot_len,char* file_name);
-void construct_ESP(void **esp);
+void parse_filename(char* argv[128],int* argc,char* file_name);
+void construct_ESP(void** esp,char* argv[128],int arg_tot_len,int argc);
 
 #endif /* userprog/process.h */
