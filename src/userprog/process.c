@@ -17,6 +17,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "lib/stdio.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -220,7 +221,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /****Added variable****/
   int argc = 0;
   int arg_tot_len = 0;
-  char argv[64][128];
+  char* argv[64];
+  char file_tmp[129];
   /*********************/
 
   /* Allocate and activate page directory. */
@@ -237,7 +239,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   arg_tot_len = strlen(file_name) + 1;
-  parse_filename(argv,&argc,(char*)file_name);
+  strlcpy(file_tmp,file_name,arg_tot_len);
+  parse_filename(argv,&argc,file_tmp);
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -478,29 +481,26 @@ install_page (void *upage, void *kpage, bool writable)
 }
 
 void
-parse_filename(char argv[][128],int* argc, char* file_name)
+parse_filename(char* argv[128],int* argc, char* file_name)
 {
   int len=0;
-  char *token, *save_ptr;
+  char *save_ptr;
 
-  for ( token = strtok_r (file_name, " \n\t", &save_ptr); token != NULL;
-        token = strtok_r (NULL, " \n\t", &save_ptr))
+  for ( argv[*argc] = strtok_r (file_name, " \n\t", &save_ptr);
+        argv[*argc] != NULL;
+        argv[*argc] = strtok_r (NULL, " \n\t", &save_ptr))
   {
-    len = strlen(token) + 1;
-
-    strlcpy(argv[(*argc)++],token,len);
+    len = strlen(argv[*argc]) + 1;
+    (*argc)++;
   }
 }
 
 void
-construct_ESP(void** esp,char argv[][128],int arg_tot_len,int argc)
+construct_ESP(void** esp,char* argv[128],int arg_tot_len,int argc)
 {
   int align = 0;
   int cnt = argc;
-  void* argv_addr[129];
-
-  *esp -= 4;
-  memcpy(*esp, &cnt,4);
+  void* argv_addr[65];
   
   //Push argument
   while(cnt--)
