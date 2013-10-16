@@ -30,6 +30,7 @@ tid_t
 process_execute (const char *file_name) 
 {
   char *fn_copy;
+  char *prog_name, *saveptr;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
@@ -39,10 +40,16 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  /* Parse file name to program name */
+  prog_name = strtok_r(fn_copy," ",&saveptr);
+
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (prog_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
+  if (!filesys_open(prog_name))
+    return TID_ERROR;
+
   return tid;
 }
 
@@ -230,6 +237,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
+  
   /* Open executable file. */
   file = filesys_open (file_name);
   if (file == NULL) 
@@ -238,6 +246,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
       goto done; 
     }
 
+  /* Parse file name */
   arg_tot_len = strlen(file_name) + 1;
   strlcpy(file_tmp,file_name,arg_tot_len);
   parse_filename(argv,&argc,file_tmp);
@@ -321,6 +330,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
+  /* Construct ESP */
   construct_ESP(esp,argv,arg_tot_len,argc);
   hex_dump(*(unsigned int*)esp,*esp,PHYS_BASE-(*esp),true);
 
@@ -481,7 +491,7 @@ install_page (void *upage, void *kpage, bool writable)
 }
 
 void
-parse_filename(char* argv[128],int* argc, char* file_name)
+parse_filename(char* argv[64],int* argc, char* file_name)
 {
   int len=0;
   char *save_ptr;
@@ -496,7 +506,7 @@ parse_filename(char* argv[128],int* argc, char* file_name)
 }
 
 void
-construct_ESP(void** esp,char* argv[128],int arg_tot_len,int argc)
+construct_ESP(void** esp,char* argv[64],int arg_tot_len,int argc)
 {
   int align = 0;
   int cnt = argc;

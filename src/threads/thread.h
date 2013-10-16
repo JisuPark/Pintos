@@ -89,7 +89,8 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
-
+    struct thread *parent;		/* Parent thread. */
+   
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
@@ -100,6 +101,20 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+  
+    /* Owned by ../lib/kernel/list.h */
+    struct list child;			/* Child thread list. */
+
+  };
+
+struct child_thread
+  {
+    /* Owned by thread.c */
+    tid_t tid;				/* Thread identifier. */
+    int status;				/* Thread state. */
+     
+    /* Shared between thread.c and synch.c. */
+    struct list_elem elem;              /* List element. */
   };
 
 /* If false (default), use round-robin scheduler.
