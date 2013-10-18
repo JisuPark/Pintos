@@ -24,6 +24,18 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+/*** Implementation by me ***/
+#define MAX_CHILD 64
+typedef struct child_manage
+  { 
+    int tot_child;			/* Number of child */
+    struct thread *child[MAX_CHILD];	/* Child thread array */ 
+    tid_t id[MAX_CHILD];		/* Store child thread's id */
+    int status[MAX_CHILD];	/* Store child thread's status */
+
+  }CH_Man;
+/*** Implementation by me ***/
+
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -89,7 +101,6 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
-    struct thread *parent;		/* Parent thread. */
    
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -99,23 +110,15 @@ struct thread
     uint32_t *pagedir;                  /* Page directory. */
 #endif
 
+    struct thread *parent;		/* Parent thread. */
+    CH_Man child_manage;		/* For managing child */
+    int arg_esp;			/* Use for assign ESP */
+
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
-  
-    /* Owned by ../lib/kernel/list.h */
-    struct list child;			/* Child thread list. */
 
   };
 
-struct child_thread
-  {
-    /* Owned by thread.c */
-    tid_t tid;				/* Thread identifier. */
-    int status;				/* Thread state. */
-     
-    /* Shared between thread.c and synch.c. */
-    struct list_elem elem;              /* List element. */
-  };
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.

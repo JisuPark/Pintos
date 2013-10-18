@@ -3,7 +3,6 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
-
 #include "threads/vaddr.h"
 #include "threads/init.h"
 #include "devices/shutdown.h"
@@ -42,21 +41,27 @@ syscall_handler (struct intr_frame *f UNUSED)
   switch(SYS_NUM)
   {
     case SYS_HALT :
+//      printf("1\n");
       Halt();
       break;
     case SYS_EXIT :
+  //    printf("2\n");
       Exit((int)argv[1]);
       break;
     case SYS_EXEC :
+    //  printf("3\n");
       f->eax = Exec((const char*)argv[1]);
       break;
     case SYS_WAIT :
+     // printf("4\n");
       f->eax = Wait((pid_t)argv[1]);
       break;
     case SYS_READ :
-      f->eax = Read((int)argv[1],(void*)argv[2],(unsigned)argv[3]);
+     // printf("5\n");
+      f->eax = Read((int)argv[1],(void *)argv[2],(unsigned)argv[3]);
       break;
     case SYS_WRITE :
+     // printf("6\n");
       f->eax = Write((int)argv[1],(void*)argv[2],(unsigned)argv[3]);
       break;
     
@@ -69,7 +74,7 @@ syscall_handler (struct intr_frame *f UNUSED)
 bool
 is_valid_syscall(void *ptr)
 {
-  if ( ptr == NULL ||  							//Null pointer
+  if ( ptr == NULL ||  						//Null pointer
        !pagedir_get_page(thread_current()->pagedir,ptr)	||	//Pointer to unmapped virtual memory      
        ptr >= PHYS_BASE						//Pointer to kernel virtual address space (above PHYS_BASE)
      )
@@ -89,29 +94,26 @@ Halt(void)
 void
 Exit(int status)
 {
-  struct thread *thread_cur = thread_current();
-  
-  struct list_elem *e;
-  struct child_thread *c;
-
-  /* Process termination message */
-  printf("%s: exit(%d)\n",thread_cur->name,status);
+  int cnt = 0;
+  struct thread *cur = thread_current();
+  struct thread *parent = cur->parent;
 
   /* Check child list until child id equal to current thread id. */
-  for( e = list_front(&thread_cur->parent->child);
-       e!= list_end(&thread_cur->parent->child);
-       e = list_next(e))
+  for(cnt=0;cnt<MAX_CHILD;cnt++)
   {
-    c = list_entry(e, struct child_thread, elem);
-    if(c->tid == thread_cur->tid)
-    {
-      c->status = status;
+    /* If we find exact child which want to be exited */
+    if(cur->tid == parent->child_manage.id[cnt])
+    {	
+      /* Process termination message */
+      printf("%s: exit(%d)\n",cur->name,status);
+      /* Change status */
+      parent->child_manage.status[cnt] = status;
       break;
     }
   }
 
-  /* Owned by ../threads/thread.c. */
   thread_exit();
+  return;
 }
 
 pid_t
@@ -131,6 +133,7 @@ Wait(pid_t pid)
 int 
 Read(int fd, void *buffer, unsigned size)
 {
+  
   int cnt;
   
   if( fd == 0 )
@@ -145,15 +148,26 @@ Read(int fd, void *buffer, unsigned size)
   }
 
   return 0;
+  
+//  if(fd==0)
+//    return input_getc();
+  
+//  return -1;
 }
 
 int
 Write(int fd, const void *buffer, unsigned size)
 {
-  if(fd == 1){
+  if(fd == 1)
+  {
     putbuf(buffer,size);
     return size;
   }
+
+  //
+  //Exit(-1);
+  //return -1;
+
   return 0;
 }
 

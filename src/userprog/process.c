@@ -30,24 +30,29 @@ tid_t
 process_execute (const char *file_name) 
 {
   char *fn_copy;
+  char file_tmp[128];
   char *prog_name, *saveptr;
   tid_t tid;
-
+	
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
     return TID_ERROR;
-  strlcpy (fn_copy, file_name, PGSIZE);
 
+  strlcpy (fn_copy, file_name, PGSIZE);
+  
+  /* Copy file name */
   /* Parse file name to program name */
-  prog_name = strtok_r(fn_copy," ",&saveptr);
+  strlcpy (file_tmp,file_name,128);
+  prog_name = strtok_r(file_tmp," ",&saveptr);
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (prog_name, PRI_DEFAULT, start_process, fn_copy);
+
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
-  if (!filesys_open(prog_name))
+  if (filesys_open(prog_name)==NULL)
     return TID_ERROR;
 
   return tid;
@@ -96,8 +101,27 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  while(1){
+  int cnt;
+  int cur_status;
+  struct thread *cur = thread_current();
+
+  for(cnt=0;cnt<MAX_CHILD;cnt++)
+  {
+    if(cur->child_manage.id[cnt]==child_tid)
+    {
+      while(1)
+      {
+	if(cur->child_manage.status[cnt]!=-18)
+	{
+	  cur_status = cur->child_manage.status[cnt];
+	  cur->child_manage.status[cnt] = -1;
+	  return cur_status;
+	}
+	thread_yield();
+      }
+    }
   }
+
   return -1;
 }
 
@@ -251,6 +275,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   strlcpy(file_tmp,file_name,arg_tot_len);
   parse_filename(argv,&argc,file_tmp);
 
+
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -332,7 +357,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   /* Construct ESP */
   construct_ESP(esp,argv,arg_tot_len,argc);
-  hex_dump(*(unsigned int*)esp,*esp,PHYS_BASE-(*esp),true);
+  //hex_dump(*(unsigned int*)esp,*esp,PHYS_BASE-(*esp),true);
 
   success = true;
 
@@ -493,15 +518,13 @@ install_page (void *upage, void *kpage, bool writable)
 void
 parse_filename(char* argv[64],int* argc, char* file_name)
 {
-  int len=0;
-  char *save_ptr;
+  char *token,*save_ptr;
 
-  for ( argv[*argc] = strtok_r (file_name, " \n\t", &save_ptr);
-        argv[*argc] != NULL;
-        argv[*argc] = strtok_r (NULL, " \n\t", &save_ptr))
+  for ( token = strtok_r (file_name, " \n\t", &save_ptr);
+        token != NULL;
+        token = strtok_r (NULL, " \n\t", &save_ptr))
   {
-    len = strlen(argv[*argc]) + 1;
-    (*argc)++;
+    argv[*argc++] = token;
   }
 }
 

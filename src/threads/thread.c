@@ -24,7 +24,7 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
-/* List of all processes.  Processes are added to this list
+/* List of all processes. Processes are added to this list
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
@@ -173,6 +173,10 @@ thread_create (const char *name, int priority,
   tid_t tid;
   enum intr_level old_level;
 
+  /* Additional variable */
+  struct thread *cur = thread_current();	/* Current thread */
+  int tot_child = cur->child_manage.tot_child;
+
   ASSERT (function != NULL);
 
   /* Allocate thread. */
@@ -183,6 +187,16 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
+
+  /**** Implemented by me ****/
+  /* Initialize child_manage structure */
+  /* Thread.h owned it */
+  t->parent = cur;
+  cur->child_manage.child[tot_child] = t; 	// Attach created thread t into thread array for manage
+  cur->child_manage.status[tot_child] = -18; 	// Check last child thread's status as -18. Kind of flag
+  cur->child_manage.id[tot_child] = tid;	// Init child thread's id
+
+  /**** Implemented by me ****/
 
   /* Prepare thread for first run by initializing its stack.
      Do this atomically so intermediate values for the 'stack' 
@@ -469,6 +483,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+  
   list_push_back (&all_list, &t->allelem);
 }
 
