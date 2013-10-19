@@ -8,6 +8,7 @@
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
+#include "userprog/syscall.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -29,26 +30,27 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 tid_t
 process_execute (const char *file_name) 
 {
-  char *fn_copy;
-  char file_tmp[128];
+  char *fn_copy,*fn_tmp;
   char *prog_name, *saveptr;
   tid_t tid;
 	
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL)
+  fn_tmp = palloc_get_page(0);
+
+  if (fn_copy == NULL || fn_tmp == NULL)
     return TID_ERROR;
 
   strlcpy (fn_copy, file_name, PGSIZE);
-  
+  strlcpy (fn_tmp, file_name, PGSIZE);
+
   /* Copy file name */
   /* Parse file name to program name */
-  strlcpy (file_tmp,file_name,128);
-  prog_name = strtok_r(file_tmp," ",&saveptr);
+  prog_name = strtok_r(fn_copy," ",&saveptr);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (prog_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (prog_name, PRI_DEFAULT, start_process, fn_tmp);
 
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
@@ -99,19 +101,22 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
   int cnt;
   int cur_status;
   struct thread *cur = thread_current();
 
+  if(child_tid == TID_ERROR) return -1;
+
   for(cnt=0;cnt<MAX_CHILD;cnt++)
   {
     if(cur->child_manage.id[cnt]==child_tid)
     {
+      //Wait using while loop
       while(1)
       {
-	if(cur->child_manage.status[cnt]!=-18)
+	if(cur->child_manage.status[cnt] != -2)
 	{
 	  cur_status = cur->child_manage.status[cnt];
 	  cur->child_manage.status[cnt] = -1;
@@ -121,8 +126,6 @@ process_wait (tid_t child_tid UNUSED)
       }
     }
   }
-
-  return -1;
 }
 
 /* Free the current process's resources. */
@@ -165,7 +168,7 @@ process_activate (void)
      interrupts. */
   tss_update ();
 }
-
+
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 
@@ -253,7 +256,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
   int argc = 0;
   int arg_tot_len = 0;
   char* argv[64];
-  char file_tmp[129];
   /*********************/
 
   /* Allocate and activate page directory. */
@@ -262,6 +264,11 @@ load (const char *file_name, void (**eip) (void), void **esp)
     goto done;
   process_activate ();
   
+  /* Parse file name */
+  arg_tot_len = strlen(file_name) + 1;
+  parse_filename(argv,&argc,file_name);
+  file_name = argv[0];
+
   /* Open executable file. */
   file = filesys_open (file_name);
   if (file == NULL) 
@@ -269,12 +276,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
-
-  /* Parse file name */
-  arg_tot_len = strlen(file_name) + 1;
-  strlcpy(file_tmp,file_name,arg_tot_len);
-  parse_filename(argv,&argc,file_tmp);
-
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -352,12 +353,12 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if (!setup_stack (esp))
     goto done;
 
-  /* Start address. */
-  *eip = (void (*) (void)) ehdr.e_entry;
-
   /* Construct ESP */
   construct_ESP(esp,argv,arg_tot_len,argc);
   //hex_dump(*(unsigned int*)esp,*esp,PHYS_BASE-(*esp),true);
+
+  /* Start address. */
+  *eip = (void (*) (void)) ehdr.e_entry;
 
   success = true;
 
@@ -366,7 +367,7 @@ done:
   file_close (file);
   return success;
 }
-
+
 /* load() helpers. */
 
 static bool install_page (void *upage, void *kpage, bool writable);
@@ -524,7 +525,7 @@ parse_filename(char* argv[64],int* argc, char* file_name)
         token != NULL;
         token = strtok_r (NULL, " \n\t", &save_ptr))
   {
-    argv[*argc++] = token;
+    argv[(*argc)++] = token;
   }
 }
 

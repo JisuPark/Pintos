@@ -31,8 +31,7 @@ typedef struct child_manage
     int tot_child;			/* Number of child */
     struct thread *child[MAX_CHILD];	/* Child thread array */ 
     tid_t id[MAX_CHILD];		/* Store child thread's id */
-    int status[MAX_CHILD];	/* Store child thread's status */
-
+    int status[MAX_CHILD];		/* Store child thread's status */
   }CH_Man;
 /*** Implementation by me ***/
 

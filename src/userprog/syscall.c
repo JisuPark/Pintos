@@ -10,6 +10,7 @@
 #include "devices/input.h" 
 #include <user/syscall.h>
 #include "userprog/pagedir.h"
+#include "threads/palloc.h"
 
 static void syscall_handler (struct intr_frame *);
 bool is_valid_syscall(void *ptr);
@@ -41,27 +42,23 @@ syscall_handler (struct intr_frame *f UNUSED)
   switch(SYS_NUM)
   {
     case SYS_HALT :
-//      printf("1\n");
       Halt();
       break;
     case SYS_EXIT :
-  //    printf("2\n");
       Exit((int)argv[1]);
       break;
     case SYS_EXEC :
-    //  printf("3\n");
+      //if(argv[1]==NULL)f->eax = -1;
+      //else 
       f->eax = Exec((const char*)argv[1]);
       break;
     case SYS_WAIT :
-     // printf("4\n");
       f->eax = Wait((pid_t)argv[1]);
       break;
     case SYS_READ :
-     // printf("5\n");
       f->eax = Read((int)argv[1],(void *)argv[2],(unsigned)argv[3]);
       break;
     case SYS_WRITE :
-     // printf("6\n");
       f->eax = Write((int)argv[1],(void*)argv[2],(unsigned)argv[3]);
       break;
     
@@ -98,27 +95,41 @@ Exit(int status)
   struct thread *cur = thread_current();
   struct thread *parent = cur->parent;
 
+  if(status<0)status = -1;
+
   /* Check child list until child id equal to current thread id. */
-  for(cnt=0;cnt<MAX_CHILD;cnt++)
+  for(;cnt<MAX_CHILD;cnt++)
   {
     /* If we find exact child which want to be exited */
     if(cur->tid == parent->child_manage.id[cnt])
-    {	
+    {
       /* Process termination message */
       printf("%s: exit(%d)\n",cur->name,status);
+      
+      /* Deattache child thread */
+     // parent->child_manage.child[cnt] = 0;
+      
       /* Change status */
-      parent->child_manage.status[cnt] = status;
-      break;
+      //parent->child_manage.status[cnt] = THREAD_DYING; 
+      parent->child_manage.status[cnt] = status; 
+      
+      /* Decrease number of child */
+      //parent->child_manage.tot_child-=1;
+      
+      thread_exit();
+      return;
     }
   }
-
-  thread_exit();
-  return;
 }
 
 pid_t
 Exec(const char* cmd_line)
 {
+
+  /* Owned by /threads/palloc.c */
+  //uint32_t check = palloc_get_page(PAL_USER);
+  //if(!check) return -1;
+
   /* Owned by /userprog/process.c */
   return process_execute(cmd_line);
 }
@@ -127,6 +138,11 @@ int
 Wait(pid_t pid)
 {
   /* Owned by /userprog/process.c */
+ // if(process_wait(pid)<0)
+ // {
+ //   return -1;
+ // }
+ // else 
   return process_wait(pid);
 }
 
@@ -135,39 +151,43 @@ Read(int fd, void *buffer, unsigned size)
 {
   
   int cnt;
+
+  if( buffer == NULL ||
+      pagedir_get_page(thread_current()->pagedir,buffer) == NULL ||
+      buffer+size >= (int*)PHYS_BASE )
+  {
+    Exit(-1);
+  }
   
-  if( fd == 0 )
+  else if( fd == 0 )
   {
     for(cnt = 0 ; cnt < size ; cnt++)
     {
       buffer = input_getc();
       buffer++;
     }
-
-    return cnt;
   }
 
-  return 0;
+  return size;
   
-//  if(fd==0)
-//    return input_getc();
-  
-//  return -1;
 }
 
 int
 Write(int fd, const void *buffer, unsigned size)
 {
-  if(fd == 1)
+  if( buffer == NULL ||
+      pagedir_get_page(thread_current()->pagedir,buffer) == NULL ||
+      buffer+size >= (int*)PHYS_BASE )
+  {
+    Exit(-1);
+  }
+  
+  else if(fd == 1)
   {
     putbuf(buffer,size);
-    return size;
+    return 0;
   }
 
-  //
-  //Exit(-1);
-  //return -1;
-
-  return 0;
+  return size;
 }
 

@@ -192,9 +192,9 @@ thread_create (const char *name, int priority,
   /* Initialize child_manage structure */
   /* Thread.h owned it */
   t->parent = cur;
-  cur->child_manage.child[tot_child] = t; 	// Attach created thread t into thread array for manage
-  cur->child_manage.status[tot_child] = -18; 	// Check last child thread's status as -18. Kind of flag
-  cur->child_manage.id[tot_child] = tid;	// Init child thread's id
+  cur->child_manage.child[tot_child] = t; 		// Attach created thread t into thread array for manage
+  cur->child_manage.status[tot_child] = -2; 		// Check last child thread's status as -2. Kind of flag
+  cur->child_manage.id[tot_child++] = tid;		// Init child thread's id
 
   /**** Implemented by me ****/
 
@@ -483,7 +483,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-  
+
   list_push_back (&all_list, &t->allelem);
 }
 
