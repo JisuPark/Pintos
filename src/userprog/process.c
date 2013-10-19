@@ -1,4 +1,5 @@
 #include "userprog/process.h"
+#include "threads/thread.h"
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
@@ -8,7 +9,6 @@
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
-#include "userprog/syscall.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -16,9 +16,7 @@
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
-#include "threads/thread.h"
 #include "threads/vaddr.h"
-#include "lib/stdio.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -30,33 +28,32 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 tid_t
 process_execute (const char *file_name) 
 {
-  char *fn_copy,*fn_tmp;
+  char *fn_copy,*fn_tmp;		//Added code
   char *prog_name, *saveptr;
   tid_t tid;
-	
+
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
-  fn_tmp = palloc_get_page(0);
-
-  if (fn_copy == NULL || fn_tmp == NULL)
+  fn_tmp = palloc_get_page (0);		//Added code
+  
+  if (fn_copy == NULL)
     return TID_ERROR;
+  
+  strlcpy (fn_copy, file_name, PGSIZE); //Copy for parse
+  strlcpy (fn_tmp, file_name, PGSIZE);	//Copy for create
 
-  strlcpy (fn_copy, file_name, PGSIZE);
-  strlcpy (fn_tmp, file_name, PGSIZE);
-
-  /* Copy file name */
   /* Parse file name to program name */
-  prog_name = strtok_r(fn_copy," ",&saveptr);
+  prog_name = strtok_r(fn_copy, " ", &saveptr);
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (prog_name, PRI_DEFAULT, start_process, fn_tmp);
 
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
-  if (filesys_open(prog_name)==NULL)
+  if(filesys_open(prog_name) == NULL)	  
     return TID_ERROR;
-
+  
   return tid;
 }
 
@@ -101,31 +98,28 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid) 
+process_wait (tid_t child_tid UNUSED) 
 {
-  int cnt;
+  /* Implemenation start */
+  int cnt=0;  
   int cur_status;
   struct thread *cur = thread_current();
 
   if(child_tid == TID_ERROR) return -1;
 
-  for(cnt=0;cnt<MAX_CHILD;cnt++)
-  {
-    if(cur->child_manage.id[cnt]==child_tid)
-    {
-      //Wait using while loop
-      while(1)
-      {
-	if(cur->child_manage.status[cnt] != -2)
-	{
-	  cur_status = cur->child_manage.status[cnt];
-	  cur->child_manage.status[cnt] = -1;
+  for(cnt=0; cnt<CH_MAX; cnt++){
+    if(cur->child_memo.child_pid[cnt]==child_tid){
+      while(1){
+	if(cur->child_memo.child_status[cnt]!=INIT){
+	  cur_status = cur->child_memo.child_status[cnt];
+	  cur->child_memo.child_status[cnt]=-1;
 	  return cur_status;
 	}
 	thread_yield();
       }
     }
   }
+  return -1;
 }
 
 /* Free the current process's resources. */
@@ -168,7 +162,7 @@ process_activate (void)
      interrupts. */
   tss_update ();
 }
-
+
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 
@@ -251,20 +245,20 @@ load (const char *file_name, void (**eip) (void), void **esp)
   off_t file_ofset;
   bool success = false;
   int i;
- 
-  /****Added variable****/
+
+  /* Implementation start */
   int argc = 0;
   int arg_tot_len = 0;
   char* argv[64];
-  /*********************/
+  /* Implementation end */
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
-  
-  /* Parse file name */
+
+  /* parse_filename */
   arg_tot_len = strlen(file_name) + 1;
   parse_filename(argv,&argc,file_name);
   file_name = argv[0];
@@ -344,30 +338,33 @@ load (const char *file_name, void (**eip) (void), void **esp)
                 goto done;
             }
           else
-	    goto done;
-	  break;
-	}
+            goto done;
+          break;
+        }
     }
 
   /* Set up stack. */
   if (!setup_stack (esp))
-    goto done;
+      goto done;
 
+  
   /* Construct ESP */
   construct_ESP(esp,argv,arg_tot_len,argc);
-  //hex_dump(*(unsigned int*)esp,*esp,PHYS_BASE-(*esp),true);
+  
+  //for debug
+  //hex_dump(*(unsigned int*)esp,*esp,PHYS_BASE - *esp,true);
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
   success = true;
 
-done:
+ done:
   /* We arrive here whether the load is successful or not. */
   file_close (file);
   return success;
 }
-
+
 /* load() helpers. */
 
 static bool install_page (void *upage, void *kpage, bool writable);
@@ -516,26 +513,29 @@ install_page (void *upage, void *kpage, bool writable)
           && pagedir_set_page (th->pagedir, upage, kpage, writable));
 }
 
+/* Implementation start */
 void
-parse_filename(char* argv[64],int* argc, char* file_name)
+parse_filename(char* argv[64],int*argc, char* file_name)
 {
-  char *token,*save_ptr;
+  char *token, *save_ptr;
 
   for ( token = strtok_r (file_name, " \n\t", &save_ptr);
-        token != NULL;
-        token = strtok_r (NULL, " \n\t", &save_ptr))
+      token != NULL;
+      token = strtok_r (NULL, " \n\t", &save_ptr))
   {
     argv[(*argc)++] = token;
   }
 }
+/* Implementation end */
 
+/* Implementation start */
 void
 construct_ESP(void** esp,char* argv[64],int arg_tot_len,int argc)
 {
   int align = 0;
   int cnt = argc;
   void* argv_addr[65];
-  
+
   //Push argument
   while(cnt--)
   {
@@ -546,20 +546,21 @@ construct_ESP(void** esp,char* argv[64],int arg_tot_len,int argc)
 
   //Calculate alignment
   if(arg_tot_len%4 != 0) align = 4 - arg_tot_len%4;
-  
+
   argv_addr[0] = *esp - align - sizeof(char*)*(argc+1);
 
-  *esp -= align 			//Word alignemnt
-        + sizeof(char*)*(argc+1)	//Argument address
-	+ sizeof(char**)		//Head argument address
-	+ sizeof(int)			//Argc
-	+ sizeof(void*);		//Return address
+  *esp -= align                     //Word alignemnt
+    + sizeof(char*)*(argc+1)        //Argument address
+    + sizeof(char**)                //Head argument address
+    + sizeof(int)                   //Argc
+    + sizeof(void*);                //Return address
 
   //Push argument address
   memcpy(*esp + 8, argv_addr, 4*(argc + 1));
-  
+
   //Push argc
   cnt = argc;
-  memcpy(*esp + 4, &cnt, 4);		
-  
+  memcpy(*esp + 4, &cnt, 4);
+
 }
+/* Implementation end */

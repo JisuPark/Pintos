@@ -14,7 +14,8 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
-
+//thread relation--> child_status init
+#define INIT -2
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
@@ -24,7 +25,7 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
-/* List of all processes. Processes are added to this list
+/* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
@@ -166,18 +167,17 @@ tid_t
 thread_create (const char *name, int priority,
                thread_func *function, void *aux) 
 {
+  int child_num;
   struct thread *t;
+  struct thread *cur;
   struct kernel_thread_frame *kf;
   struct switch_entry_frame *ef;
   struct switch_threads_frame *sf;
   tid_t tid;
   enum intr_level old_level;
 
-  /* Additional variable */
-  struct thread *cur = thread_current();	/* Current thread */
-  int tot_child = cur->child_manage.tot_child;
-
   ASSERT (function != NULL);
+  cur = thread_current();
 
   /* Allocate thread. */
   t = palloc_get_page (PAL_ZERO);
@@ -188,18 +188,18 @@ thread_create (const char *name, int priority,
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
 
-  /**** Implemented by me ****/
-  /* Initialize child_manage structure */
-  /* Thread.h owned it */
-  t->parent = cur;
-  cur->child_manage.child[tot_child] = t; 		// Attach created thread t into thread array for manage
-  cur->child_manage.status[tot_child] = -2; 		// Check last child thread's status as -2. Kind of flag
-  cur->child_manage.id[tot_child++] = tid;		// Init child thread's id
-
-  /**** Implemented by me ****/
+  /* Implementation start */
+  /* Modify child_structure value */
+  child_num = cur->child_memo.child_num;
+  t->child_memo.parent = cur;
+  cur->child_memo.child_status[child_num] = INIT; //Check init
+  cur->child_memo.child[child_num] = t;		  //Attach child
+  cur->child_memo.child_pid[child_num] = tid;	  //Check id
+  cur->child_memo.child_num++;			  //Increase child number
+  /* Implementation end */
 
   /* Prepare thread for first run by initializing its stack.
-     Do this atomically so intermediate values for the 'stack' 
+	 Do this atomically so intermediate values for the 'stack' 
      member cannot be observed. */
   old_level = intr_disable ();
 
@@ -302,6 +302,7 @@ thread_tid (void)
 void
 thread_exit (void) 
 {
+  struct thread *parent;
   ASSERT (!intr_context ());
 
 #ifdef USERPROG
@@ -313,6 +314,7 @@ thread_exit (void)
      when it calls thread_schedule_tail(). */
   intr_disable ();
   list_remove (&thread_current()->allelem);
+  parent = thread_current()->child_memo.parent;
   thread_current ()->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
@@ -397,7 +399,7 @@ thread_get_recent_cpu (void)
   /* Not yet implemented. */
   return 0;
 }
-
+   
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
@@ -483,7 +485,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-
+      
   list_push_back (&all_list, &t->allelem);
 }
 
@@ -596,7 +598,7 @@ allocate_tid (void)
 
   return tid;
 }
-
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
